@@ -1,0 +1,66 @@
+name: Linux RDP via Tailscale (airaacheisyaa)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Jaga sesi tetap aktif hingga 6 jam
+
+    steps:
+      - name: Install Desktop Environment and RDP Server
+        run: |
+          sudo apt-get update
+          # Nonaktifkan prompt interaktif selama instalasi
+          export DEBIAN_FRONTEND=noninteractive
+          # Instal lingkungan desktop XFCE (ringan dan cepat) serta XRDP
+          sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp
+          # Tambahkan user xrdp ke grup ssl-cert untuk izin sertifikat
+          sudo adduser xrdp ssl-cert
+          # Konfigurasi XRDP untuk menggunakan sesi XFCE
+          echo "xfce4-session" | sudo tee /etc/skel/.xsession
+          # Restart layanan XRDP untuk menerapkan perubahan
+          sudo systemctl restart xrdp
+
+      - name: Create User and Set Static Password
+        run: |
+          # Atur username dan password yang diinginkan
+          USERNAME="airaacheisyaa"
+          PASSWORD="airaacheisyaa123"
+          
+          # Simpan password ke environment agar bisa ditampilkan di langkah akhir
+          echo "RDP_PASSWORD=${PASSWORD}" >> $GITHUB_ENV
+          
+          # Buat pengguna baru
+          sudo useradd -m -s /bin/bash "${USERNAME}"
+          # Tambahkan pengguna ke grup sudo agar memiliki hak admin
+          sudo adduser "${USERNAME}" sudo
+          # Atur password untuk pengguna baru tersebut
+          echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
+          
+          echo "Pengguna '${USERNAME}' berhasil dibuat dengan password yang sudah ditentukan."
+
+      - name: Install and Connect Tailscale
+        run: |
+          # Unduh dan jalankan skrip instalasi resmi Tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # Jalankan Tailscale dengan auth key dari secrets GitHub
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-linux-$GITHUB_RUN_ID --ssh
+          
+          # Simpan alamat IP Tailscale ke environment variable
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
+
+      - name: Display Connection Details and Keep Alive
+        run: |
+          echo ""
+          echo "====================== RDP ACCESS LINUX ======================"
+          echo "Alamat RDP (IP) : ${{ env.TAILSCALE_IP }}"
+          echo "Username        : airaacheisyaa"
+          echo "Password        : ${{ env.RDP_PASSWORD }}"
+          echo "=============================================================="
+          echo "Runner akan tetap aktif. Tekan Ctrl+C di log Actions untuk menghentikan."
+          
+          # Perintah ini akan menjaga runner tetap berjalan
+          sleep infinity
