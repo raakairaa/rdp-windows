@@ -13,17 +13,22 @@ jobs:
         run: |
           sudo apt-get update
           export DEBIAN_FRONTEND=noninteractive
-          sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp
+          # --- INSTALASI DISEMPURNAKAN ---
+          # Menambahkan xorgxrdp (sangat penting) dan policykit-1-gnome (untuk izin)
+          sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp \
+            xorgxrdp policykit-1-gnome
+            
           sudo adduser xrdp ssl-cert
           
-          # --- PERBAIKAN UTAMA (PLAN B) ---
-          # Ganti total isi skrip startup XRDP untuk memastikan XFCE berjalan.
-          # Ini adalah metode yang paling andal.
+          # Ganti total isi skrip startup XRDP untuk memastikan XFCE berjalan
           sudo tee /etc/xrdp/startwm.sh > /dev/null << EOT
           #!/bin/sh
           # Pastikan environment bersih sebelum memulai sesi
           unset DBUS_SESSION_BUS_ADDRESS
           unset XDG_RUNTIME_DIR
+
+          # Jalankan agen policykit untuk menangani izin di dalam sesi
+          /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
 
           # Mulai XFCE dengan D-Bus
           dbus-launch --exit-with-session xfce4-session
@@ -32,22 +37,17 @@ jobs:
           # Pastikan skrip baru dapat dieksekusi
           sudo chmod +x /etc/xrdp/startwm.sh
           
-          # Restart layanan XRDP untuk menerapkan perubahan skrip
+          # Restart layanan xrdp untuk menerapkan semua perubahan
           sudo systemctl restart xrdp
 
       - name: Create User and Set Static Password
         run: |
-          # Atur username dan password yang diinginkan
           USERNAME="airaacheisyaa"
           PASSWORD="airaacheisyaa123"
-          
           echo "RDP_PASSWORD=${PASSWORD}" >> $GITHUB_ENV
-          
-          # Buat pengguna baru (tidak perlu lagi membuat file .xsession)
           sudo useradd -m -s /bin/bash "${USERNAME}"
           sudo adduser "${USERNAME}" sudo
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
-          
           echo "Pengguna '${USERNAME}' berhasil dibuat."
 
       - name: Install and Connect Tailscale
@@ -65,5 +65,5 @@ jobs:
           echo "Password        : ${{ env.RDP_PASSWORD }}"
           echo "=============================================================="
           echo "Runner akan tetap aktif. Tekan Ctrl+C di log Actions untuk menghentikan."
-          
           sleep infinity
+          
