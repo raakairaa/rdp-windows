@@ -6,19 +6,33 @@ on:
 jobs:
   rdp-linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # Jaga sesi tetap aktif hingga 6 jam
+    timeout-minutes: 360
 
     steps:
       - name: Install Desktop Environment and RDP Server
         run: |
           sudo apt-get update
-          # Nonaktifkan prompt interaktif selama instalasi
           export DEBIAN_FRONTEND=noninteractive
-          # Instal lingkungan desktop XFCE (ringan dan cepat) serta XRDP
           sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp
-          # Tambahkan user xrdp ke grup ssl-cert untuk izin sertifikat
           sudo adduser xrdp ssl-cert
-          # Restart layanan XRDP untuk menerapkan perubahan
+          
+          # --- PERBAIKAN UTAMA (PLAN B) ---
+          # Ganti total isi skrip startup XRDP untuk memastikan XFCE berjalan.
+          # Ini adalah metode yang paling andal.
+          sudo tee /etc/xrdp/startwm.sh > /dev/null << EOT
+          #!/bin/sh
+          # Pastikan environment bersih sebelum memulai sesi
+          unset DBUS_SESSION_BUS_ADDRESS
+          unset XDG_RUNTIME_DIR
+
+          # Mulai XFCE dengan D-Bus
+          dbus-launch --exit-with-session xfce4-session
+          EOT
+          
+          # Pastikan skrip baru dapat dieksekusi
+          sudo chmod +x /etc/xrdp/startwm.sh
+          
+          # Restart layanan XRDP untuk menerapkan perubahan skrip
           sudo systemctl restart xrdp
 
       - name: Create User and Set Static Password
@@ -27,32 +41,19 @@ jobs:
           USERNAME="airaacheisyaa"
           PASSWORD="airaacheisyaa123"
           
-          # Simpan password ke environment agar bisa ditampilkan di langkah akhir
           echo "RDP_PASSWORD=${PASSWORD}" >> $GITHUB_ENV
           
-          # Buat pengguna baru
+          # Buat pengguna baru (tidak perlu lagi membuat file .xsession)
           sudo useradd -m -s /bin/bash "${USERNAME}"
-          # Tambahkan pengguna ke grup sudo agar memiliki hak admin
           sudo adduser "${USERNAME}" sudo
-          # Atur password untuk pengguna baru tersebut
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
           
-          # Buat file .xsession untuk pengguna dengan perintah yang benar
-          echo "dbus-launch --exit-with-session xfce4-session" | sudo tee "/home/${USERNAME}/.xsession"
-          # Pastikan pengguna yang baru dibuat memiliki file tersebut
-          sudo chown "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.xsession"
-          
-          echo "Pengguna '${USERNAME}' berhasil dibuat dan dikonfigurasi untuk sesi XFCE."
+          echo "Pengguna '${USERNAME}' berhasil dibuat."
 
       - name: Install and Connect Tailscale
         run: |
-          # Unduh dan jalankan skrip instalasi resmi Tailscale
           curl -fsSL https://tailscale.com/install.sh | sh
-          
-          # Jalankan Tailscale dengan auth key dari secrets GitHub
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-linux-$GITHUB_RUN_ID --ssh
-          
-          # Simpan alamat IP Tailscale ke environment variable
           echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
 
       - name: Display Connection Details and Keep Alive
@@ -65,5 +66,4 @@ jobs:
           echo "=============================================================="
           echo "Runner akan tetap aktif. Tekan Ctrl+C di log Actions untuk menghentikan."
           
-          # Perintah ini akan menjaga runner tetap berjalan
           sleep infinity
