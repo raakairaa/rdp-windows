@@ -13,31 +13,21 @@ jobs:
         run: |
           sudo apt-get update
           export DEBIAN_FRONTEND=noninteractive
-          # --- INSTALASI DISEMPURNAKAN ---
-          # Menambahkan xorgxrdp (sangat penting) dan policykit-1-gnome (untuk izin)
-          sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp \
-            xorgxrdp policykit-1-gnome
-            
+          # Instalasi tetap lengkap untuk memastikan semua ada
+          sudo apt-get install -y xfce4 desktop-base xfce4-goodies dbus-x11 xorg xrdp xorgxrdp
           sudo adduser xrdp ssl-cert
           
-          # Ganti total isi skrip startup XRDP untuk memastikan XFCE berjalan
+          # --- SOLUSI FUNDAMENTAL ---
+          # Konfigurasi xrdp untuk menggunakan skrip session manager utama sistem,
+          # yang kompatibel dengan lingkungan tanpa systemd.
           sudo tee /etc/xrdp/startwm.sh > /dev/null << EOT
           #!/bin/sh
-          # Pastikan environment bersih sebelum memulai sesi
-          unset DBUS_SESSION_BUS_ADDRESS
-          unset XDG_RUNTIME_DIR
-
-          # Jalankan agen policykit untuk menangani izin di dalam sesi
-          /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
-
-          # Mulai XFCE dengan D-Bus
-          dbus-launch --exit-with-session xfce4-session
+          # Menjalankan skrip Xsession bawaan sistem. Ini adalah kunci utamanya.
+          # Skrip ini akan mengatur seluruh environment sesi dengan benar.
+          exec /etc/X11/Xsession
           EOT
           
-          # Pastikan skrip baru dapat dieksekusi
           sudo chmod +x /etc/xrdp/startwm.sh
-          
-          # Restart layanan xrdp untuk menerapkan semua perubahan
           sudo systemctl restart xrdp
 
       - name: Create User and Set Static Password
@@ -45,10 +35,18 @@ jobs:
           USERNAME="airaacheisyaa"
           PASSWORD="airaacheisyaa123"
           echo "RDP_PASSWORD=${PASSWORD}" >> $GITHUB_ENV
+          
           sudo useradd -m -s /bin/bash "${USERNAME}"
           sudo adduser "${USERNAME}" sudo
           echo "${USERNAME}:${PASSWORD}" | sudo chpasswd
-          echo "Pengguna '${USERNAME}' berhasil dibuat."
+          
+          # --- KONFIGURASI PENDUKUNG ---
+          # Buat file .xsession di home directory pengguna.
+          # Skrip /etc/X11/Xsession akan mencari dan mengeksekusi file ini.
+          echo "xfce4-session" | sudo tee "/home/${USERNAME}/.xsession"
+          sudo chown "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.xsession"
+          
+          echo "Pengguna '${USERNAME}' berhasil dibuat dan dikonfigurasi."
 
       - name: Install and Connect Tailscale
         run: |
@@ -66,4 +64,3 @@ jobs:
           echo "=============================================================="
           echo "Runner akan tetap aktif. Tekan Ctrl+C di log Actions untuk menghentikan."
           sleep infinity
-          
